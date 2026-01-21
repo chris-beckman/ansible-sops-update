@@ -1,0 +1,25 @@
+# SOPS encryption configuration
+#
+# This file defines which files should be encrypted and with which keys.
+# Place this in your repository root.
+#
+# To generate age keys:
+#   age-keygen -o ~/.config/sops/age/keys.txt
+#
+# To get your public key:
+#   age-keygen -y ~/.config/sops/age/keys.txt
+#
+# For YubiKey, use:
+#   age-plugin-yubikey --identity | age-plugin-yubikey --list
+
+creation_rules:
+  # Encrypt secrets.sops.yaml files in inventory directories
+  - path_regex: inventory/(host_vars|group_vars)/.*/secrets\.sops\.ya?ml$
+    age:
+      # Replace with your age public key(s)
+      # You can have multiple recipients (comma-separated or as a list)
+      # Get your public key with: age-keygen -y ~/.config/sops/age/keys.txt
+      - age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+      
+      # Example: YubiKey recipients (uncomment if using YubiKeys)
+      # - age1yubikey1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx

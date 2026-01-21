@@ -1,0 +1,125 @@
+name: Test SOPS Update Tasks
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install SOPS
+        run: |
+          wget -O sops https://github.com/getsops/sops/releases/download/v3.11.0/sops-v3.11.0.linux.amd64
+          chmod +x sops
+          sudo mv sops /usr/local/bin/
+          sops --version
+      
+      - name: Install Age
+        run: |
+          wget https://github.com/FiloSottile/age/releases/download/v1.1.1/age-v1.1.1-linux-amd64.tar.gz
+          tar -xzf age-v1.1.1-linux-amd64.tar.gz
+          sudo mv age/age /usr/local/bin/
+          sudo mv age/age-keygen /usr/local/bin/
+          age --version
+      
+      - name: Install Ansible
+        run: |
+          pip install ansible
+          ansible --version
+      
+      - name: Install Ansible collections
+        run: |
+          ansible-galaxy collection install -r requirements.yml
+      
+      - name: Generate test age key
+        run: |
+          mkdir -p ~/.config/sops/age
+          age-keygen -o ~/.config/sops/age/keys.txt
+          chmod 600 ~/.config/sops/age/keys.txt
+          age-keygen -y ~/.config/sops/age/keys.txt > /tmp/age_public_key.txt
+          cat /tmp/age_public_key.txt
+      
+      - name: Configure SOPS
+        run: |
+          AGE_PUBLIC_KEY=$(cat /tmp/age_public_key.txt)
+          # Replace the example age key with our generated key and update path regex for test
+          sed -e "s|- age1.*|- $AGE_PUBLIC_KEY|" \
+              -e "s|inventory/|test_inventory/|" \
+              .sops.yaml.example > .sops.yaml
+          cat .sops.yaml
+      
+      - name: Create test inventory structure
+        run: |
+          mkdir -p test_inventory/host_vars/test-host
+      
+      - name: Create initial test secrets file
+        run: |
+          cat > test_inventory/host_vars/test-host/secrets.sops.yaml <<'EOF'
+          api_token: "initial-token-value"
+          database_password: "initial-password"
+          old_key: "to-be-removed"
+          EOF
+          sed -i 's/^          //' test_inventory/host_vars/test-host/secrets.sops.yaml
+          sops -e -i test_inventory/host_vars/test-host/secrets.sops.yaml
+          echo "Created encrypted secrets file"
+      
+      - name: Verify file is encrypted
+        run: |
+          if grep -q "ENC\[" test_inventory/host_vars/test-host/secrets.sops.yaml; then
+            echo "File is encrypted [OK]"
+          else
+            echo "ERROR: File is not encrypted"
+            exit 1
+          fi
+      
+      - name: Configure Ansible
+        run: |
+          cp ansible.cfg.example ansible.cfg
+          sed -i 's|inventory = .*|inventory = test_inventory/hosts.ini|' ansible.cfg
+          cat ansible.cfg
+      
+      - name: Create test inventory file
+        run: |
+          cat > test_inventory/hosts.ini <<'EOF'
+          [test]
+          test-host ansible_connection=local
+          EOF
+          sed -i 's/^          //' test_inventory/hosts.ini
+      
+      - name: Run test playbook
+        run: |
+          ansible-playbook -i test_inventory/hosts.ini test/test-sops-update.yml
+      
+      - name: Verify secrets were updated
+        run: |
+          # Decrypt and check values (avoid printing decrypted content)
+          sops -d test_inventory/host_vars/test-host/secrets.sops.yaml > /tmp/decrypted.yaml
+          
+          # Verify new values
+          if grep -q "api_token: new-token-12345" /tmp/decrypted.yaml; then
+            echo "[OK] api_token updated correctly"
+          else
+            echo "ERROR: api_token not updated"
+            exit 1
+          fi
+          
+          if grep -q "database_password: new-password-67890" /tmp/decrypted.yaml; then
+            echo "[OK] database_password updated correctly"
+          else
+            echo "ERROR: database_password not updated"
+            exit 1
+          fi
+          
+          # Verify old_key was removed
+          if grep -q "old_key:" /tmp/decrypted.yaml; then
+            echo "ERROR: old_key was not removed"
+            exit 1
+          else
+            echo "[OK] old_key removed correctly"
+          fi

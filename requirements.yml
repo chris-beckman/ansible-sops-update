@@ -1,0 +1,9 @@
+---
+# Ansible collection requirements
+#
+# Install with:
+#   ansible-galaxy collection install -r requirements.yml
+
+collections:
+  - name: community.sops
+    version: ">=1.0.0"

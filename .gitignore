@@ -1,0 +1,18 @@
+# macOS
+.DS_Store
+
+# Ignore actual secrets files (keep .example files)
+**/secrets.sops.yaml
+!**/secrets.sops.yaml.example
+
+# Ignore test artifacts
+test_inventory/
+.sops.yaml
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Ansible
+.ansible/
+*.retry

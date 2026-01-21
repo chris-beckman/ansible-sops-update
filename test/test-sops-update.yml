@@ -1,0 +1,16 @@
+---
+# Test playbook for SOPS update task
+- name: Test SOPS Secrets Update
+  hosts: test-host
+  gather_facts: false
+  
+  tasks:
+    - name: Update secrets in SOPS file
+      include_tasks: ../tasks/update_sops_secrets.yml
+      vars:
+        update_condition: true
+        secrets_file: "{{ playbook_dir }}/../test_inventory/host_vars/{{ inventory_hostname }}/secrets.sops.yaml"
+        secrets_to_update:
+          api_token: "new-token-12345"
+          database_password: "new-password-67890"
+          old_key: ""  # Remove this key

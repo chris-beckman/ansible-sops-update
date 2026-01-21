@@ -1,0 +1,42 @@
+---
+# Example: Generate secrets and save to SOPS
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.ini examples/generate-and-save.yml -e "inventory_hostname=your-host"
+
+- name: Generate and Save Secrets
+  hosts: localhost
+  gather_facts: false
+
+  tasks:
+    - name: Generate random password
+      ansible.builtin.command:
+        cmd: openssl rand -base64 32
+      register: password_result
+      changed_when: true
+      no_log: true
+
+    - name: Generate API token (simulated)
+      ansible.builtin.set_fact:
+        api_token: "ak-{{ 1000 | random | to_uuid }}"
+      changed_when: true
+
+    - name: Save generated secrets to SOPS
+      include_tasks: ../tasks/update_sops_secrets.yml
+      vars:
+        update_condition: true
+        secrets_to_update:
+          database_password: "{{ password_result.stdout }}"
+          api_token: "{{ api_token }}"
+
+    - name: Display success message
+      ansible.builtin.debug:
+        msg: |
+          [OK] Generated secrets have been saved to SOPS!
+          
+          The following secrets were generated and encrypted:
+          - database_password: Generated (32 bytes, base64)
+          - api_token: Generated
+          
+          Note: These secrets are now in your SOPS file and will be available
+          in hostvars on the next playbook run.

@@ -16,10 +16,16 @@
       changed_when: true
       no_log: true
 
-    - name: Generate API token (simulated)
-      ansible.builtin.set_fact:
-        api_token: "ak-{{ 1000 | random | to_uuid }}"
+    - name: Generate API token
+      ansible.builtin.command:
+        cmd: openssl rand -hex 16
+      register: api_token_result
       changed_when: true
+      no_log: true
+
+    - name: Set API token fact
+      ansible.builtin.set_fact:
+        api_token: "ak-{{ api_token_result.stdout }}"
 
     - name: Save generated secrets to SOPS
       include_tasks: ../tasks/update_sops_secrets.yml

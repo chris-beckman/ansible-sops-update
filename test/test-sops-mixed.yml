@@ -1,0 +1,15 @@
+---
+# Test: Mixed scalar + list in one secrets_to_update
+- name: Test SOPS Mixed Scalar and List Update
+  hosts: test-host
+  gather_facts: false
+
+  tasks:
+    - name: Update secrets with scalars and list
+      include_tasks: ../tasks/update_sops_secrets.yml
+      vars:
+        update_condition: true
+        secrets_file: "{{ playbook_dir }}/../test_inventory/host_vars/{{ inventory_hostname }}/secrets.sops.yaml"
+        secrets_to_update:
+          mixed_scalar: "scalar-value-123"
+          mixed_list: ["item-a", "item-b"]

@@ -1,0 +1,14 @@
+---
+# Test: List-valued secrets
+- name: Test SOPS List Secrets Update
+  hosts: test-host
+  gather_facts: false
+
+  tasks:
+    - name: Update secrets including list
+      include_tasks: ../tasks/update_sops_secrets.yml
+      vars:
+        update_condition: true
+        secrets_file: "{{ playbook_dir }}/../test_inventory/host_vars/{{ inventory_hostname }}/secrets.sops.yaml"
+        secrets_to_update:
+          allowed_ips: ["10.0.0.1", "10.0.0.2"]

@@ -8,6 +8,7 @@
 # Ignore test artifacts
 test_inventory/
 .sops.yaml
+.test_age_key
 
 # Python cache
 __pycache__/

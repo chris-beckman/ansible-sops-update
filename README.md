@@ -52,7 +52,10 @@ Copy `tasks/update_sops_secrets.yml` to your project:
 ## Parameters
 
 - `update_condition` (bool): When `true`, update runs
-- `secrets_to_update` (dict): Key-value pairs. Empty strings remove keys.
+- `secrets_to_update` (dict): Key-value pairs to update. Values are interpreted as:
+  - Non-empty strings: Set/update the key
+  - Empty strings (`""`): Remove the key from the file
+  - `null`/`~`: Ignored (no action taken)
 - `secrets_file` (optional): Path to SOPS file. Defaults to auto-detected path:
   - If playbook is in a `playbooks/` directory: `../inventory/host_vars/{{ inventory_hostname }}/secrets.sops.yaml`
   - Otherwise: `inventory/host_vars/{{ inventory_hostname }}/secrets.sops.yaml`
@@ -72,6 +75,16 @@ Copy `tasks/update_sops_secrets.yml` to your project:
 3. **Configure SOPS**: Copy `.sops.yaml.example` to `.sops.yaml` and add your age public key
 4. **Configure Ansible**: Copy `ansible.cfg.example` to `ansible.cfg` and install `community.sops` collection: `ansible-galaxy collection install -r requirements.yml`
 
+## Local testing
+
+**Never run `age-keygen -o ~/.config/sops/age/keys.txt`** — it will overwrite your real key and break decryption of your secrets. Use the project script instead:
+
+```bash
+./test/test_local.sh
+```
+
+This uses a project-local `.test_age_key` (gitignored) and never touches your real keyfile.
+
 ## Examples
 
 See `examples/` directory for complete playbooks:
@@ -81,3 +94,7 @@ See `examples/` directory for complete playbooks:
 ## Limitations
 
 - **Updated secrets not immediately available**: Secrets updated by this task are written to disk, but won't be available in `hostvars` until the next playbook run. The SOPS vars plugin loads secrets during inventory loading (before tasks run). If you need updated values in the same run, use `community.sops.load_vars` after updating.
+
+- **Top-level keys only**: This task supports top-level keys only. Nested key paths like `["database"]["password"]` are not supported. If you need nested keys, you would need to manage the full parent object.
+
+- **`changed_when` detection is message-based**: The idempotency detection relies on SOPS output messages (`"already set to the same value"`, `"key not found"`). These messages may vary between SOPS versions. If you encounter issues, check your SOPS version (v3.11.0+ recommended).

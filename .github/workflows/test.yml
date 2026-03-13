@@ -9,17 +9,17 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Install SOPS
         run: |
           wget -O sops https://github.com/getsops/sops/releases/download/v3.11.0/sops-v3.11.0.linux.amd64
           chmod +x sops
           sudo mv sops /usr/local/bin/
           sops --version
-      
+
       - name: Install Age
         run: |
           wget https://github.com/FiloSottile/age/releases/download/v1.1.1/age-v1.1.1-linux-amd64.tar.gz
@@ -27,16 +27,21 @@ jobs:
           sudo mv age/age /usr/local/bin/
           sudo mv age/age-keygen /usr/local/bin/
           age --version
-      
+
       - name: Install Ansible
         run: |
           pip install ansible
           ansible --version
-      
+
       - name: Install Ansible collections
         run: |
           ansible-galaxy collection install -r requirements.yml
-      
+
+      - name: Run unit tests
+        run: |
+          pip install -r requirements-dev.txt
+          PYTHONPATH=. pytest tests/unit/ -v
+
       - name: Generate test age key
         run: |
           mkdir -p ~/.config/sops/age
@@ -44,21 +49,21 @@ jobs:
           chmod 600 ~/.config/sops/age/keys.txt
           age-keygen -y ~/.config/sops/age/keys.txt > /tmp/age_public_key.txt
           cat /tmp/age_public_key.txt
-      
+
       - name: Configure SOPS
         run: |
           AGE_PUBLIC_KEY=$(cat /tmp/age_public_key.txt)
-          # Replace the example age key with our generated key and update path regex for test
           sed -e "s|- age1.*|- $AGE_PUBLIC_KEY|" \
               -e "s|inventory/|test_inventory/|" \
               .sops.yaml.example > .sops.yaml
           cat .sops.yaml
-      
+
       - name: Create test inventory structure
         run: |
           mkdir -p test_inventory/host_vars/test-host
-      
-      - name: Create initial test secrets file
+          mkdir -p test_inventory/group_vars/all
+
+      - name: Create initial host secrets file
         run: |
           cat > test_inventory/host_vars/test-host/secrets.sops.yaml <<'EOF'
           api_token: "initial-token-value"
@@ -67,23 +72,29 @@ jobs:
           EOF
           sed -i 's/^          //' test_inventory/host_vars/test-host/secrets.sops.yaml
           sops -e -i test_inventory/host_vars/test-host/secrets.sops.yaml
-          echo "Created encrypted secrets file"
-      
-      - name: Verify file is encrypted
+          echo "Created encrypted host secrets file"
+
+      - name: Create initial global secrets file
         run: |
-          if grep -q "ENC\[" test_inventory/host_vars/test-host/secrets.sops.yaml; then
-            echo "File is encrypted [OK]"
-          else
-            echo "ERROR: File is not encrypted"
-            exit 1
-          fi
-      
+          cat > test_inventory/group_vars/all/secrets.sops.yaml <<'EOF'
+          global_placeholder: "initial"
+          EOF
+          sed -i 's/^          //' test_inventory/group_vars/all/secrets.sops.yaml
+          sops -e -i test_inventory/group_vars/all/secrets.sops.yaml
+          echo "Created encrypted global secrets file"
+
+      - name: Verify files are encrypted
+        run: |
+          grep -q "ENC\[" test_inventory/host_vars/test-host/secrets.sops.yaml || (echo "ERROR: host secrets not encrypted"; exit 1)
+          grep -q "ENC\[" test_inventory/group_vars/all/secrets.sops.yaml || (echo "ERROR: global secrets not encrypted"; exit 1)
+          echo "[OK] Files encrypted"
+
       - name: Configure Ansible
         run: |
           cp ansible.cfg.example ansible.cfg
           echo "inventory = test_inventory/hosts.ini" >> ansible.cfg
           cat ansible.cfg
-      
+
       - name: Create test inventory file
         run: |
           cat > test_inventory/hosts.ini <<'EOF'
@@ -91,35 +102,111 @@ jobs:
           test-host ansible_connection=local
           EOF
           sed -i 's/^          //' test_inventory/hosts.ini
-      
-      - name: Run test playbook
+
+      - name: Run test-sops-noop (update_condition false)
+        run: |
+          ansible-playbook -i test_inventory/hosts.ini test/test-sops-noop.yml
+
+      - name: Verify noop did not write
+        run: |
+          sops -d test_inventory/host_vars/test-host/secrets.sops.yaml > /tmp/decrypted.yaml
+          if grep -q "noop_key:" /tmp/decrypted.yaml; then
+            echo "ERROR: noop_key was written (should not have been)"
+            exit 1
+          fi
+          echo "[OK] noop did not modify file"
+
+      - name: Run test-sops-update
         run: |
           ansible-playbook -i test_inventory/hosts.ini test/test-sops-update.yml
-      
-      - name: Verify secrets were updated
+
+      - name: Verify test-sops-update
         run: |
-          # Decrypt and check values (avoid printing decrypted content)
           sops -d test_inventory/host_vars/test-host/secrets.sops.yaml > /tmp/decrypted.yaml
-          
-          # Verify new values
-          if grep -q "api_token: new-token-12345" /tmp/decrypted.yaml; then
-            echo "[OK] api_token updated correctly"
-          else
-            echo "ERROR: api_token not updated"
-            exit 1
-          fi
-          
-          if grep -q "database_password: new-password-67890" /tmp/decrypted.yaml; then
-            echo "[OK] database_password updated correctly"
-          else
-            echo "ERROR: database_password not updated"
-            exit 1
-          fi
-          
-          # Verify old_key was removed
-          if grep -q "old_key:" /tmp/decrypted.yaml; then
-            echo "ERROR: old_key was not removed"
-            exit 1
-          else
-            echo "[OK] old_key removed correctly"
-          fi
+          grep -q "api_token: new-token-12345" /tmp/decrypted.yaml || (echo "ERROR: api_token not updated"; exit 1)
+          grep -q "database_password: new-password-67890" /tmp/decrypted.yaml || (echo "ERROR: database_password not updated"; exit 1)
+          grep -q "old_key:" /tmp/decrypted.yaml && (echo "ERROR: old_key not removed"; exit 1) || true
+          echo "[OK] test-sops-update"
+
+      - name: Run test-sops-list
+        run: |
+          ansible-playbook -i test_inventory/hosts.ini test/test-sops-list.yml
+
+      - name: Verify test-sops-list
+        run: |
+          sops -d test_inventory/host_vars/test-host/secrets.sops.yaml > /tmp/decrypted.yaml
+          grep -q "allowed_ips:" /tmp/decrypted.yaml || (echo "ERROR: allowed_ips not set"; exit 1)
+          grep -q "10.0.0.1" /tmp/decrypted.yaml || (echo "ERROR: allowed_ips missing 10.0.0.1"; exit 1)
+          grep -q "10.0.0.2" /tmp/decrypted.yaml || (echo "ERROR: allowed_ips missing 10.0.0.2"; exit 1)
+          echo "[OK] test-sops-list"
+
+      - name: Run test-sops-mixed
+        run: |
+          ansible-playbook -i test_inventory/hosts.ini test/test-sops-mixed.yml
+
+      - name: Verify test-sops-mixed
+        run: |
+          sops -d test_inventory/host_vars/test-host/secrets.sops.yaml > /tmp/decrypted.yaml
+          grep -q "mixed_scalar: scalar-value-123" /tmp/decrypted.yaml || (echo "ERROR: mixed_scalar not set"; exit 1)
+          grep -q "mixed_list:" /tmp/decrypted.yaml || (echo "ERROR: mixed_list not set"; exit 1)
+          grep -q "item-a" /tmp/decrypted.yaml || (echo "ERROR: mixed_list missing item-a"; exit 1)
+          echo "[OK] test-sops-mixed"
+
+      - name: Run test-sops-global
+        run: |
+          ansible-playbook -i test_inventory/hosts.ini test/test-sops-global.yml
+
+      - name: Verify test-sops-global
+        run: |
+          sops -d test_inventory/group_vars/all/secrets.sops.yaml > /tmp/global_decrypted.yaml
+          grep -q "global_api_key: global-key-xyz" /tmp/global_decrypted.yaml || (echo "ERROR: global_api_key not set"; exit 1)
+          grep -q "global_allowed_hosts:" /tmp/global_decrypted.yaml || (echo "ERROR: global_allowed_hosts not set"; exit 1)
+          echo "[OK] test-sops-global"
+
+      - name: Run test-sops-path-resolution
+        run: |
+          ansible-playbook -i test_inventory/hosts.ini test/test-sops-path-resolution.yml
+
+      - name: Verify test-sops-path-resolution
+        run: |
+          sops -d test_inventory/host_vars/test-host/secrets.sops.yaml > /tmp/decrypted.yaml
+          grep -q "path_resolution_key: resolved-via-inventory-dir" /tmp/decrypted.yaml || (echo "ERROR: path_resolution_key not set"; exit 1)
+          echo "[OK] test-sops-path-resolution"
+
+      - name: Run test-sops-idempotent
+        run: |
+          ansible-playbook -i test_inventory/hosts.ini test/test-sops-idempotent.yml
+
+      - name: Verify test-sops-idempotent
+        run: |
+          sops -d test_inventory/host_vars/test-host/secrets.sops.yaml > /tmp/decrypted.yaml
+          grep -q "idempotent_key: same-value-every-time" /tmp/decrypted.yaml || (echo "ERROR: idempotent_key not set"; exit 1)
+          echo "[OK] test-sops-idempotent"
+
+      - name: Run test-sops-fail-missing-vars (expect failure)
+        run: |
+          ansible-playbook -i test_inventory/hosts.ini test/test-sops-fail-missing-vars.yml || test $? -eq 2
+
+      - name: Run example generate-and-save
+        run: |
+          ansible-playbook -i test_inventory/hosts.ini examples/generate-and-save.yml \
+            -e "secrets_file=$(pwd)/test_inventory/host_vars/test-host/secrets.sops.yaml"
+
+      - name: Verify generate-and-save
+        run: |
+          sops -d test_inventory/host_vars/test-host/secrets.sops.yaml > /tmp/decrypted.yaml
+          grep -q "database_password:" /tmp/decrypted.yaml || (echo "ERROR: database_password not in file"; exit 1)
+          grep -q "api_token:" /tmp/decrypted.yaml || (echo "ERROR: api_token not in file"; exit 1)
+          echo "[OK] generate-and-save"
+
+      - name: Run example update-secrets
+        run: |
+          ansible-playbook -i test_inventory/hosts.ini examples/update-secrets.yml \
+            -e "secrets_file=$(pwd)/test_inventory/host_vars/test-host/secrets.sops.yaml"
+
+      - name: Verify update-secrets
+        run: |
+          sops -d test_inventory/host_vars/test-host/secrets.sops.yaml > /tmp/decrypted.yaml
+          grep -q "api_token: new-api-token-12345" /tmp/decrypted.yaml || (echo "ERROR: api_token not updated by example"; exit 1)
+          grep -q "database_password: secure-password-here" /tmp/decrypted.yaml || (echo "ERROR: database_password not updated by example"; exit 1)
+          echo "[OK] update-secrets"

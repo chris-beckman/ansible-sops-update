@@ -92,6 +92,25 @@ Run examples from the repository root, e.g.:
 ansible-playbook -i inventory/hosts.ini examples/update-secrets.yml -e "inventory_hostname=your-host"
 ```
 
+## Running tests
+
+**Unit tests** (filter plugin):
+
+```bash
+pip install -r requirements-dev.txt
+PYTHONPATH=. pytest tests/unit/ -v
+```
+
+**Integration tests** require SOPS, Age, Ansible, and `community.sops`. Set up as in CI:
+
+1. Generate age key: `age-keygen -o ~/.config/sops/age/keys.txt`
+2. Copy `.sops.yaml.example` to `.sops.yaml`, replace the age key, and update path regex: `inventory/` → `test_inventory/`
+3. Create `test_inventory/` with `host_vars/test-host/secrets.sops.yaml` and `group_vars/all/secrets.sops.yaml` (encrypt with `sops -e -i`)
+4. Create `test_inventory/hosts.ini` with `[test]` and `test-host ansible_connection=local`
+5. Run playbooks from repo root: `ansible-playbook -i test_inventory/hosts.ini test/test-sops-update.yml`
+
+See `.github/workflows/test.yml` for the full CI setup. Use `./scripts/test.sh` to run unit tests locally.
+
 ## Limitations
 
 - Updated secrets are not available in `hostvars` until the next playbook run. Use `community.sops.load_vars` after updating if you need them in the same run.

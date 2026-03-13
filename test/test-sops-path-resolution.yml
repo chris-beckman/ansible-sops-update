@@ -1,0 +1,14 @@
+---
+# Test: Path resolution without secrets_file override (relies on inventory_dir)
+# Run with: -i test_inventory/ or -i test_inventory/hosts.ini
+- name: Test SOPS Path Resolution
+  hosts: test-host
+  gather_facts: false
+
+  tasks:
+    - name: Update secrets using default path resolution
+      include_tasks: ../tasks/update_sops_secrets.yml
+      vars:
+        update_condition: true
+        secrets_to_update:
+          path_resolution_key: "resolved-via-inventory-dir"

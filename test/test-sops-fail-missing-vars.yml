@@ -1,0 +1,12 @@
+---
+# Test: update_condition: true but secrets_to_update not provided - expect fail
+- name: Test SOPS Fail Missing Vars
+  hosts: test-host
+  gather_facts: false
+
+  tasks:
+    - name: Update secrets without secrets_to_update (should fail)
+      include_tasks: ../tasks/update_sops_secrets.yml
+      vars:
+        update_condition: true
+        secrets_file: "{{ playbook_dir }}/../test_inventory/host_vars/{{ inventory_hostname }}/secrets.sops.yaml"

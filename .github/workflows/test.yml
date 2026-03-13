@@ -81,7 +81,7 @@ jobs:
       - name: Configure Ansible
         run: |
           cp ansible.cfg.example ansible.cfg
-          sed -i 's|inventory = .*|inventory = test_inventory/hosts.ini|' ansible.cfg
+          echo "inventory = test_inventory/hosts.ini" >> ansible.cfg
           cat ansible.cfg
       
       - name: Create test inventory file

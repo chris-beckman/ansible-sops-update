@@ -1,16 +1,14 @@
 # SOPS Secrets Update for Ansible
 
-**What this does**: Update SOPS-encrypted secrets files from Ansible playbooks without manually editing them. Wraps `sops set`/`sops unset` commands into a reusable task with proper error handling.
+**What this does**: Update SOPS-encrypted secrets files from Ansible playbooks without manually editing them. Wraps `sops set`/`sops unset` with proper error handling.
 
 ## The Problem
 
-SOPS encrypts secrets in git, and the `community.sops` vars plugin decrypts them automatically. But there is currently no way I know of to update SOPS encrypted secrets from vars.
-
-This task demonstrates how to solve this.
+SOPS encrypts secrets in git, and the `community.sops` vars plugin decrypts them automatically. There is no built-in way to update SOPS-encrypted secrets from Ansible vars. This task fills that gap.
 
 ## Quick Start
 
-Copy `tasks/update_sops_secrets.yml` to your project:
+Copy `tasks/` and `filter_plugins/` to your project, then:
 
 ```yaml
 - name: Update secrets in SOPS file
@@ -49,35 +47,51 @@ Copy `tasks/update_sops_secrets.yml` to your project:
       database_password: "{{ password_result.stdout }}"
 ```
 
+### List values
+```yaml
+- name: Update secrets including a list
+  include_tasks: tasks/update_sops_secrets.yml
+  vars:
+    update_condition: true
+    secrets_to_update:
+      allowed_ips: ["10.0.0.1", "10.0.0.2"]
+```
+
 ## Parameters
 
 - `update_condition` (bool): When `true`, update runs
-- `secrets_to_update` (dict): Key-value pairs. Empty strings remove keys.
-- `secrets_file` (optional): Path to SOPS file. Defaults to auto-detected path:
-  - If playbook is in a `playbooks/` directory: `../inventory/host_vars/{{ inventory_hostname }}/secrets.sops.yaml`
-  - Otherwise: `inventory/host_vars/{{ inventory_hostname }}/secrets.sops.yaml`
-  - Override by setting `secrets_file` explicitly
+- `secrets_to_update` (dict): Key-value pairs. Empty strings remove keys. Supports scalars and lists.
+- `secrets_scope` (optional): `host` (default) or `global`. Host: `host_vars/{{ inventory_hostname }}/secrets.sops.yaml`; global: `group_vars/all/secrets.sops.yaml`
+- `secrets_file` (optional): Override path to SOPS file
+- `sops_age_keyfile` (optional): Path to age keyfile. Defaults to `SOPS_AGE_KEY_FILE` env or `~/.config/sops/age/keys.txt`
 - `debug_sops` (optional): Enable debug output
+
+Path resolution uses `inventory_dir` when available (from `-i inventory/` or `-i inventory/hosts.ini`), else `playbook_dir/../inventory`. Use `secrets_file` to override.
 
 ## Prerequisites
 
-- SOPS v3.11.0+ installed (`brew install sops` or see [SOPS installation](https://github.com/getsops/sops))
-- Age keyfile or YubiKey configured
-- Ansible configured with SOPS vars plugin (see `ansible.cfg.example`) - requires `community.sops` collection
+- SOPS v3.11.0+
+- Age keyfile or YubiKey
+- Ansible with `community.sops` collection
 
 ## Setup
 
-1. **Install SOPS and Age** (see [SOPS installation](https://github.com/getsops/sops) and [Age installation](https://github.com/FiloSottile/age))
-2. **Generate age key**: `age-keygen -o ~/.config/sops/age/keys.txt`
-3. **Configure SOPS**: Copy `.sops.yaml.example` to `.sops.yaml` and add your age public key
-4. **Configure Ansible**: Copy `ansible.cfg.example` to `ansible.cfg` and install `community.sops` collection: `ansible-galaxy collection install -r requirements.yml`
+1. Install SOPS and Age
+2. Generate age key: `age-keygen -o ~/.config/sops/age/keys.txt`
+3. Copy `.sops.yaml.example` to `.sops.yaml` and add your age public key
+4. Copy `ansible.cfg.example` to `ansible.cfg`, set `filter_plugins = filter_plugins`, install `community.sops`: `ansible-galaxy collection install -r requirements.yml`
 
 ## Examples
 
-See `examples/` directory for complete playbooks:
-- `update-secrets.yml` - Basic update with provided values
-- `generate-and-save.yml` - Generate secrets and save to SOPS
+- `examples/update-secrets.yml` - Basic update
+- `examples/generate-and-save.yml` - Generate and save
+
+Run examples from the repository root, e.g.:
+
+```bash
+ansible-playbook -i inventory/hosts.ini examples/update-secrets.yml -e "inventory_hostname=your-host"
+```
 
 ## Limitations
 
-- **Updated secrets not immediately available**: Secrets updated by this task are written to disk, but won't be available in `hostvars` until the next playbook run. The SOPS vars plugin loads secrets during inventory loading (before tasks run). If you need updated values in the same run, use `community.sops.load_vars` after updating.
+- Updated secrets are not available in `hostvars` until the next playbook run. Use `community.sops.load_vars` after updating if you need them in the same run.

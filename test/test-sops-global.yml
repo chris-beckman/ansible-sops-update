@@ -1,0 +1,16 @@
+---
+# Test: secrets_scope: global (group_vars/all/secrets.sops.yaml)
+- name: Test SOPS Global Scope Update
+  hosts: test-host
+  gather_facts: false
+
+  tasks:
+    - name: Update global secrets
+      include_tasks: ../tasks/update_sops_secrets.yml
+      vars:
+        update_condition: true
+        secrets_scope: global
+        secrets_file: "{{ playbook_dir }}/../test_inventory/group_vars/all/secrets.sops.yaml"
+        secrets_to_update:
+          global_api_key: "global-key-xyz"
+          global_allowed_hosts: ["192.168.1.1", "192.168.1.2"]

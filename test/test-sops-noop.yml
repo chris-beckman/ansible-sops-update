@@ -1,0 +1,15 @@
+---
+# Test: update_condition: false - no-op, file should be untouched
+# Run early (before other tests modify the file) or use a separate file
+- name: Test SOPS No-Op
+  hosts: test-host
+  gather_facts: false
+
+  tasks:
+    - name: Update secrets (disabled - should not run)
+      include_tasks: ../tasks/update_sops_secrets.yml
+      vars:
+        update_condition: false
+        secrets_file: "{{ playbook_dir }}/../test_inventory/host_vars/{{ inventory_hostname }}/secrets.sops.yaml"
+        secrets_to_update:
+          noop_key: "this-should-never-be-written"

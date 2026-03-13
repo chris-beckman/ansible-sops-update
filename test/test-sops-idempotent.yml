@@ -1,0 +1,22 @@
+---
+# Test: Idempotency - run same update twice, second run should not change file
+- name: Test SOPS Idempotent Update
+  hosts: test-host
+  gather_facts: false
+
+  tasks:
+    - name: First update
+      include_tasks: ../tasks/update_sops_secrets.yml
+      vars:
+        update_condition: true
+        secrets_file: "{{ playbook_dir }}/../test_inventory/host_vars/{{ inventory_hostname }}/secrets.sops.yaml"
+        secrets_to_update:
+          idempotent_key: "same-value-every-time"
+
+    - name: Second update (same values - should be no-op)
+      include_tasks: ../tasks/update_sops_secrets.yml
+      vars:
+        update_condition: true
+        secrets_file: "{{ playbook_dir }}/../test_inventory/host_vars/{{ inventory_hostname }}/secrets.sops.yaml"
+        secrets_to_update:
+          idempotent_key: "same-value-every-time"

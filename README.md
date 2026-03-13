@@ -81,6 +81,16 @@ Path resolution uses `inventory_dir` when available (from `-i inventory/` or `-i
 3. Copy `.sops.yaml.example` to `.sops.yaml` and add your age public key
 4. Copy `ansible.cfg.example` to `ansible.cfg`, set `filter_plugins = filter_plugins`, install `community.sops`: `ansible-galaxy collection install -r requirements.yml`
 
+## Local testing
+
+**Never run `age-keygen -o ~/.config/sops/age/keys.txt`** — it will overwrite your real key and break decryption of your secrets. Use the project script instead:
+
+```bash
+./test/test_local.sh
+```
+
+This uses a project-local `.test_age_key` (gitignored) and never touches your real keyfile.
+
 ## Examples
 
 - `examples/update-secrets.yml` - Basic update
